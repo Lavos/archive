@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"errors"
+	"io/ioutil"
 )
 
 type PostJSON struct {
@@ -25,9 +26,9 @@ func NewServer() *Server {
 		server: w,
 	}
 
-	w.Get("/note/([0-9a-f]{40})/?", s.getNoteRevisions)
-	w.Post("/note/", s.postNote)
-	w.Post("/note/([0-9a-f]{40})", s.postRevision)
+	w.Post("/", s.postNote)
+	w.Get("/([0-9a-f]{40})", s.getBlob)
+	w.Post("/([0-9a-f]{40})", s.postRevision)
 
 	return s
 }
@@ -53,7 +54,7 @@ func getSumFromString (hex string) ([]byte, error) {
 	return sha1sum, nil
 }
 
-func (s *Server) getNoteRevisions (ctx *web.Context, hex string) string {
+func (s *Server) getBlob (ctx *web.Context, hex string) string {
 	log.Printf("string: %v", hex);
 
 	sha1sum, err := getSumFromString(hex)
@@ -63,29 +64,53 @@ func (s *Server) getNoteRevisions (ctx *web.Context, hex string) string {
 		return ""
 	}
 
-	notebytes, err := s.store.getNote(sha1sum)
+	b, err := s.store.getBlob(sha1sum)
 
 	if err != nil {
 		ctx.Abort(500, "Could not get note with that sha1.")
 		return ""
 	}
 
-	return string(notebytes)
+	return string(b)
 }
 
 func (s *Server) postNote (ctx *web.Context) string {
-	var postjson PostJSON
-	json.Unmarshal([]byte(ctx.Params["json"]), &postjson)
+	body, err := ioutil.ReadAll(ctx.Request.Body)
 
-	log.Printf("params: %#v", ctx.Params)
+	if err != nil {
+		ctx.Abort(500, "No body for new note.")
+		return ""
+	}
+
+	var postjson PostJSON
+	err = json.Unmarshal(body, &postjson)
+
+	if err != nil {
+		ctx.Abort(500, "Could not parse body as JSON.")
+		return ""
+	}
+
 	log.Printf("postjson obj: %#v", postjson)
 
-	s.store.addNote(postjson.Title)
-	return "done"
+	return s.store.addNote(postjson.Title)
 }
 
-func (s *Server) postRevision (val string) string {
-	
+func (s *Server) postRevision (ctx *web.Context, hex string) string {
+	body, err := ioutil.ReadAll(ctx.Request.Body)
+
+	if err != nil {
+		ctx.Abort(500, "No body supplied for revision.")
+		return ""
+	}
+
+	sha1sum, err := getSumFromString(hex)
+
+	if err != nil {
+		ctx.Abort(500, "Could not get sha1sum from provided hex.")
+		return ""
+	}
+
+	return s.store.addRevision(sha1sum, body)
 }
 
 func (s *Server) Run () {

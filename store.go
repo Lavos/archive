@@ -2,13 +2,15 @@ package archive
 
 import (
 	"log"
-	// "fmt"
+	"fmt"
 	"errors"
 	"math/rand"
 	"time"
-	"github.com/cznic/kv"
 	"crypto/sha1"
+	"bytes"
 	"encoding/json"
+
+	"github.com/cznic/kv"
 )
 
 var (
@@ -22,8 +24,8 @@ type Store struct {
 
 type Note struct {
 	Title string
-	signature int64
-	RevisionRefs [][]byte
+	Signature int64
+	RevisionRefs []string
 }
 
 func newStore () *Store {
@@ -45,22 +47,45 @@ func newStore () *Store {
 		db: db,
 	}
 
-	enum, err := db.SeekFirst()
+	titles, hexes := s.dump()
 
-	if err == nil {
-		key := make([]byte, 0)
-		value := make([]byte, 0)
-		err = nil
-
-		for ; err == nil; key, value, err = enum.Next() {
-			log.Printf("%#v: %v", key, string(value))
-		}
+	for index, title := range titles {
+		log.Printf("%v: %v", title, hexes[index])
 	}
 
 	return s
 }
 
-func (s *Store) getNote (b []byte) ([]byte, error) {
+func (s *Store) dump () ([]string, []string) {
+	t := time.Now()
+
+	titles := make([]string, 0)
+	hexes := make([]string, 0)
+
+	enum, err := s.db.SeekFirst()
+
+	if err == nil {
+		key := make([]byte, 0)
+		value := make([]byte, 0)
+		var n Note
+		var loop_err error
+
+		for ; loop_err == nil; key, value, loop_err = enum.Next() {
+			if bytes.HasPrefix(value, []byte(`{"Title":"`)) {
+				json.Unmarshal(value, &n)
+
+				titles = append(titles, n.Title)
+				hexes = append(hexes, fmt.Sprintf("%x", key))
+			}
+		}
+	}
+
+	log.Print("Dumped store values index in: ", time.Now().Sub(t))
+
+	return titles, hexes
+}
+
+func (s *Store) getBlob (b []byte) ([]byte, error) {
 	sub, _ = s.db.Get(buf, b)
 	log.Printf("%#v", string(sub))
 
@@ -71,57 +96,45 @@ func (s *Store) getNote (b []byte) ([]byte, error) {
 	return sub, nil
 }
 
-func (s *Store) getRevision (b []byte) ([]byte, error) {
-	log.Printf("%#v", b)
-
-	sub, _ = s.db.Get(buf, b)
-	log.Printf("%#v", string(sub))
-
-	if sub == nil {
-		return nil, errors.New("Could not get revision with specified blobref: " + string(b))
-	}
-
-	return sub, nil
-}
-
-func (s *Store) addNote (title string) {
+func (s *Store) addNote (title string) string {
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	n := &Note{
 		Title: title,
-		signature: rand.Int63(),
-		RevisionRefs: make([][]byte, 0),
+		Signature: rand.Int63(),
+		RevisionRefs: make([]string, 0),
 	}
 
 	b, _  := json.Marshal(n)
-
-	log.Printf("new note json: %#v", string(b))
 
 	h := sha1.New()
 	h.Write(b)
 	sha1sum := h.Sum(nil)
 
 	log.Printf("new note sha1: %x", sha1sum)
-	log.Printf("new note sha1: %#v", sha1sum)
 
 	s.db.Set(sha1sum, b)
-	log.Printf(string(b))
+	return fmt.Sprintf("%x", sha1sum)
 }
 
-func (s *Store) addRevision (targetRef []byte, content []byte) {
-	notebytes := s.getNote(target)
-	var n note
+func (s *Store) addRevision (targetRef []byte, content []byte) string {
+	notebytes, _ := s.getBlob(targetRef)
+	var n Note
 	json.Unmarshal(notebytes, &n)
 
 	h := sha1.New()
-	h.write(content)
+	h.Write(content)
 	sha1sum := h.Sum(nil)
+	hex := fmt.Sprintf("%x", sha1sum)
+
+	log.Printf("add revision hex: %#v", hex)
 
 	s.db.Set(sha1sum, content)
 
-	n.RevisionRefs = append(n.RevisionRefs, sha1sum)
+	n.RevisionRefs = append(n.RevisionRefs, hex)
 
 	b, _ := json.Marshal(n)
 
 	s.db.Set(targetRef, b)
+	return hex
 }
