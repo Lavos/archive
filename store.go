@@ -20,12 +20,13 @@ var (
 
 type Store struct {
 	db *kv.DB
+	index *Index
 }
 
 type Note struct {
-	Title string
-	Signature int64
-	RevisionRefs []string
+	Title string `json:"title"`
+	Signature int64 `json:"signature"`
+	RevisionRefs []string `json:"revision_refs"`
 }
 
 func newStore () *Store {
@@ -45,44 +46,86 @@ func newStore () *Store {
 
 	s := &Store{
 		db: db,
+		index: newIndex(),
 	}
 
-	titles, hexes := s.dump()
-
-	for index, title := range titles {
-		log.Printf("%v: %v", title, hexes[index])
-	}
+	s.reindex()
 
 	return s
 }
 
-func (s *Store) dump () ([]string, []string) {
+func (s *Store) reindex () {
+	titles, hexes, bodies := s.dump()
+
+	s.index.RebuildWith(titles, hexes, bodies)
+
+	for index, title := range titles {
+		log.Printf("%v: %v", title, hexes[index])
+	}
+}
+
+func (s *Store) dump () ([]string, []string, []string) {
 	t := time.Now()
 
 	titles := make([]string, 0)
 	hexes := make([]string, 0)
+	bodies := make([]string, 0)
 
 	enum, err := s.db.SeekFirst()
 
 	if err == nil {
 		key := make([]byte, 0)
 		value := make([]byte, 0)
+		latest_revision_bytes := make([]byte, 0)
+		sha1sum := make([]byte, 0)
+		var body string
+
 		var n Note
 		var loop_err error
 
 		for ; loop_err == nil; key, value, loop_err = enum.Next() {
-			if bytes.HasPrefix(value, []byte(`{"Title":"`)) {
+			if bytes.HasPrefix(value, []byte(`{"title":"`)) {
 				json.Unmarshal(value, &n)
 
 				titles = append(titles, n.Title)
 				hexes = append(hexes, fmt.Sprintf("%x", key))
+
+				if len(n.RevisionRefs) > 0 {
+					sha1sum, _ = getSumFromString(n.RevisionRefs[len(n.RevisionRefs)-1])
+					latest_revision_bytes, _ = s.getBlob(sha1sum)
+					body = string(latest_revision_bytes)
+				} else {
+					body = ""
+				}
+
+				bodies = append(bodies, body)
 			}
 		}
 	}
 
-	log.Print("Dumped store values index in: ", time.Now().Sub(t))
+	log.Print("Dumped store values in: ", time.Now().Sub(t))
 
-	return titles, hexes
+	return titles, hexes, bodies
+}
+
+func (s *Store) query (term string) []Note {
+	hexes := s.index.Query(term)
+	notes := make([]Note, 0)
+
+	var sha1sum []byte
+	var notebytes []byte
+
+	for _, hex := range hexes {
+		sha1sum, _ = getSumFromString(hex)
+		notebytes, _ = s.getBlob(sha1sum)
+
+		var n Note
+		json.Unmarshal(notebytes, &n)
+
+		notes = append(notes, n)
+	}
+
+	return notes
 }
 
 func (s *Store) getBlob (b []byte) ([]byte, error) {
@@ -114,6 +157,8 @@ func (s *Store) addNote (title string) string {
 	log.Printf("new note sha1: %x", sha1sum)
 
 	s.db.Set(sha1sum, b)
+	go s.reindex()
+
 	return fmt.Sprintf("%x", sha1sum)
 }
 

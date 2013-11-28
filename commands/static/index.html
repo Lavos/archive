@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8"/>
+	<title>blank</title>
+
+	<script type="text/javascript" src="curl/curl.settings.js"></script>
+	<script type="text/javascript" src="curl/curl.js"></script>
+</head>
+
+<body>
+	<div id="master">
+	
+	</div><!-- /#master -->
+
+	<script type="text/javascript">
+		curl(['notes']).then(function(Notes){
+			var n = new Notes();
+			document.getElementById('master').appendChild(n.element);
+			console.dir(n);
+		});		
+	</script>
+</body>
+</html>

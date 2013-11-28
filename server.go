@@ -26,8 +26,10 @@ func NewServer() *Server {
 		server: w,
 	}
 
-	w.Post("/", s.postNote)
 	w.Get("/([0-9a-f]{40})", s.getBlob)
+	w.Get("/search", s.search)
+
+	w.Post("/", s.postNote)
 	w.Post("/([0-9a-f]{40})", s.postRevision)
 
 	return s
@@ -72,6 +74,13 @@ func (s *Server) getBlob (ctx *web.Context, hex string) string {
 	}
 
 	return string(b)
+}
+
+func (s *Server) search (ctx *web.Context) []byte {
+	notes := s.store.query(ctx.Params["q"])
+	b, _ := json.Marshal(notes)
+
+	return b
 }
 
 func (s *Server) postNote (ctx *web.Context) string {
