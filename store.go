@@ -24,6 +24,7 @@ type Store struct {
 }
 
 type Note struct {
+	Hex string `json:"hex"`
 	Title string `json:"title"`
 	Signature int64 `json:"signature"`
 	RevisionRefs []string `json:"revision_refs"`
@@ -59,9 +60,9 @@ func (s *Store) reindex () {
 
 	s.index.RebuildWith(titles, hexes, bodies)
 
-	for index, title := range titles {
+	/* for index, title := range titles {
 		log.Printf("%v: %v", title, hexes[index])
-	}
+	} */
 }
 
 func (s *Store) dump () ([]string, []string, []string) {
@@ -84,7 +85,7 @@ func (s *Store) dump () ([]string, []string, []string) {
 		var loop_err error
 
 		for ; loop_err == nil; key, value, loop_err = enum.Next() {
-			if bytes.HasPrefix(value, []byte(`{"title":"`)) {
+			if bytes.HasPrefix(value, []byte(`{"hex":"`)) {
 				json.Unmarshal(value, &n)
 
 				titles = append(titles, n.Title)
@@ -130,7 +131,6 @@ func (s *Store) query (term string) []Note {
 
 func (s *Store) getBlob (b []byte) ([]byte, error) {
 	sub, _ = s.db.Get(buf, b)
-	log.Printf("%#v", string(sub))
 
 	if sub == nil {
 		return nil, errors.New("Could not find not with specified sha1sum")
@@ -148,18 +148,39 @@ func (s *Store) addNote (title string) string {
 		RevisionRefs: make([]string, 0),
 	}
 
-	b, _  := json.Marshal(n)
+	b_sign, _  := json.Marshal(n)
 
 	h := sha1.New()
-	h.Write(b)
+	h.Write(b_sign)
 	sha1sum := h.Sum(nil)
 
-	log.Printf("new note sha1: %x", sha1sum)
+	n.Hex = fmt.Sprintf("%x", sha1sum)
 
-	s.db.Set(sha1sum, b)
+	b_val, _ := json.Marshal(n)
+
+	s.db.Set(sha1sum, b_val)
+
+	s.index.Insert(title, n.Hex)
+	// go s.reindex()
+
+	return n.Hex
+}
+
+func (s *Store) patchNote (targetRef []byte, title string) string {
+	notebytes, _ := s.getBlob(targetRef)
+	var n Note
+	json.Unmarshal(notebytes, &n)
+
+	n.Title = title;
+
+	log.Printf("updated note: %#v", n)
+
+	b_val, _ := json.Marshal(n)
+
+	s.db.Set(targetRef, b_val)
 	go s.reindex()
 
-	return fmt.Sprintf("%x", sha1sum)
+	return n.Hex
 }
 
 func (s *Store) addRevision (targetRef []byte, content []byte) string {
@@ -172,8 +193,6 @@ func (s *Store) addRevision (targetRef []byte, content []byte) string {
 	sha1sum := h.Sum(nil)
 	hex := fmt.Sprintf("%x", sha1sum)
 
-	log.Printf("add revision hex: %#v", hex)
-
 	s.db.Set(sha1sum, content)
 
 	n.RevisionRefs = append(n.RevisionRefs, hex)
@@ -181,5 +200,7 @@ func (s *Store) addRevision (targetRef []byte, content []byte) string {
 	b, _ := json.Marshal(n)
 
 	s.db.Set(targetRef, b)
+	go s.reindex()
+
 	return hex
 }

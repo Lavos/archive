@@ -29,8 +29,10 @@ func NewServer() *Server {
 	w.Get("/([0-9a-f]{40})", s.getBlob)
 	w.Get("/search", s.search)
 
-	w.Post("/", s.postNote)
+	w.Post("/new", s.postNote)
 	w.Post("/([0-9a-f]{40})", s.postRevision)
+
+	w.Match("PATCH", "/([0-9a-f]{40})", s.patchNote)
 
 	return s
 }
@@ -69,7 +71,7 @@ func (s *Server) getBlob (ctx *web.Context, hex string) string {
 	b, err := s.store.getBlob(sha1sum)
 
 	if err != nil {
-		ctx.Abort(500, "Could not get note with that sha1.")
+		ctx.Abort(500, "Could not get blob with that sha1.")
 		return ""
 	}
 
@@ -99,9 +101,43 @@ func (s *Server) postNote (ctx *web.Context) string {
 		return ""
 	}
 
-	log.Printf("postjson obj: %#v", postjson)
+	if len(postjson.Title) == 0 {
+		ctx.Abort(500, "No title found.")
+		return ""
+	}
 
 	return s.store.addNote(postjson.Title)
+}
+
+func (s *Server) patchNote (ctx *web.Context, hex string) string {
+	body, err := ioutil.ReadAll(ctx.Request.Body)
+
+	if err != nil {
+		ctx.Abort(500, "No body for nore patch.")
+		return ""
+	}
+
+	var postjson PostJSON
+	err = json.Unmarshal(body, &postjson)
+
+	if err != nil {
+		ctx.Abort(500, "Could not parse body as JSON.")
+		return ""
+	}
+
+	if len(postjson.Title) == 0 {
+		ctx.Abort(500, "No title found.")
+		return ""
+	}
+
+	sha1sum, err := getSumFromString(hex)
+
+	if err != nil {
+		ctx.Abort(500, "Could not get sha1sum from provided hex.")
+		return ""
+	}
+
+	return s.store.patchNote(sha1sum, postjson.Title)
 }
 
 func (s *Server) postRevision (ctx *web.Context, hex string) string {
