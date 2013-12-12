@@ -2,13 +2,13 @@ package archive
 
 import (
 	"log"
-	"fmt"
+	// "fmt"
 	"errors"
 	"math/rand"
 	"time"
 	"crypto/sha1"
 	"bytes"
-	// "encoding/hex"
+	"encoding/hex"
 	"encoding/json"
 
 	"github.com/cznic/kv"
@@ -90,10 +90,10 @@ func (s *Store) dump () ([]string, []string, []string) {
 				json.Unmarshal(value, &n)
 
 				titles = append(titles, n.Title)
-				hexes = append(hexes, fmt.Sprintf("%x", key))
+				hexes = append(hexes, hex.EncodeToString(key))
 
 				if len(n.RevisionRefs) > 0 {
-					sha1sum, _ = getSumFromString(n.RevisionRefs[len(n.RevisionRefs)-1])
+					sha1sum, _ = hex.DecodeString(n.RevisionRefs[len(n.RevisionRefs)-1])
 					latest_revision_bytes, _ = s.getBlob(sha1sum)
 					body = string(latest_revision_bytes)
 				} else {
@@ -117,8 +117,8 @@ func (s *Store) query (term string) []Note {
 	var sha1sum []byte
 	var notebytes []byte
 
-	for _, hex := range hexes {
-		sha1sum, _ = getSumFromString(hex)
+	for _, hexstr := range hexes {
+		sha1sum, _ = hex.DecodeString(hexstr)
 		notebytes, _ = s.getBlob(sha1sum)
 
 		var n Note
@@ -155,7 +155,7 @@ func (s *Store) addNote (title string) string {
 	h.Write(b_sign)
 	sha1sum := h.Sum(nil)
 
-	n.Hex = fmt.Sprintf("%x", sha1sum)
+	n.Hex = hex.EncodeToString(sha1sum)
 
 	b_val, _ := json.Marshal(n)
 
@@ -191,16 +191,16 @@ func (s *Store) addRevision (targetRef []byte, content []byte) string {
 	h := sha1.New()
 	h.Write(content)
 	sha1sum := h.Sum(nil)
-	hex := fmt.Sprintf("%x", sha1sum)
+	hexstr := hex.EncodeToString(sha1sum)
 
 	s.db.Set(sha1sum, content)
 
-	n.RevisionRefs = append(n.RevisionRefs, hex)
+	n.RevisionRefs = append(n.RevisionRefs, hexstr)
 
 	b, _ := json.Marshal(n)
 
 	s.db.Set(targetRef, b)
 	go s.reindex()
 
-	return hex
+	return hexstr
 }

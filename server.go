@@ -1,13 +1,11 @@
 package archive
 
 import (
-	// "fmt"
 	"log"
 	"os"
 	"github.com/hoisie/web"
 	"encoding/json"
-	"strconv"
-	"errors"
+	"encoding/hex"
 	"io/ioutil"
 )
 
@@ -37,31 +35,8 @@ func NewServer() *Server {
 	return s
 }
 
-func getSumFromString (hex string) ([]byte, error) {
-	sha1sum := make([]byte, 0)
-	var pair string
-	var val uint64
-	var err error
-
-	for len(hex) > 0 {
-		pair = hex[:2]
-		val, err = strconv.ParseUint(pair, 16, 8)
-
-		if err != nil {
-			return nil, errors.New("Could not parse int.")
-		}
-
-		sha1sum = append(sha1sum, uint8(val))
-		hex = hex[2:]
-	}
-
-	return sha1sum, nil
-}
-
-func (s *Server) getBlob (ctx *web.Context, hex string) string {
-	log.Printf("string: %v", hex);
-
-	sha1sum, err := getSumFromString(hex)
+func (s *Server) getBlob (ctx *web.Context, hexstr string) string {
+	sha1sum, err := hex.DecodeString(hexstr)
 
 	if err != nil {
 		ctx.Abort(500, "Could not get sha1sum from provided string.")
@@ -109,7 +84,7 @@ func (s *Server) postNote (ctx *web.Context) string {
 	return s.store.addNote(postjson.Title)
 }
 
-func (s *Server) patchNote (ctx *web.Context, hex string) string {
+func (s *Server) patchNote (ctx *web.Context, hexstr string) string {
 	body, err := ioutil.ReadAll(ctx.Request.Body)
 
 	if err != nil {
@@ -130,7 +105,7 @@ func (s *Server) patchNote (ctx *web.Context, hex string) string {
 		return ""
 	}
 
-	sha1sum, err := getSumFromString(hex)
+	sha1sum, err := hex.DecodeString(hexstr)
 
 	if err != nil {
 		ctx.Abort(500, "Could not get sha1sum from provided hex.")
@@ -140,7 +115,7 @@ func (s *Server) patchNote (ctx *web.Context, hex string) string {
 	return s.store.patchNote(sha1sum, postjson.Title)
 }
 
-func (s *Server) postRevision (ctx *web.Context, hex string) string {
+func (s *Server) postRevision (ctx *web.Context, hexstr string) string {
 	body, err := ioutil.ReadAll(ctx.Request.Body)
 
 	if err != nil {
@@ -148,7 +123,7 @@ func (s *Server) postRevision (ctx *web.Context, hex string) string {
 		return ""
 	}
 
-	sha1sum, err := getSumFromString(hex)
+	sha1sum, err := hex.DecodeString(hexstr)
 
 	if err != nil {
 		ctx.Abort(500, "Could not get sha1sum from provided hex.")
