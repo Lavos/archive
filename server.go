@@ -26,13 +26,13 @@ func NewServer() *Server {
 		server: w,
 	}
 
-	w.Get("/([0-9a-f]{40})", s.getBlob)
-	w.Get("/search", s.search)
+	w.Get("/api/([0-9a-f]{40})", s.getBlob)
+	w.Get("/api/search", s.search)
 
-	w.Post("/new", s.postNote)
-	w.Post("/([0-9a-f]{40})", s.postRevision)
+	w.Post("/api/new", s.postNote)
+	w.Post("/api/([0-9a-f]{40})", s.postRevision)
 
-	w.Match("PATCH", "/([0-9a-f]{40})", s.patchNote)
+	w.Match("PATCH", "/api/([0-9a-f]{40})", s.patchNote)
 
 	return s
 }
@@ -162,7 +162,7 @@ func (s *Server) Run () {
 	log.Print("started server")
 
 	s.store = newStore()
-	go s.server.Run(":8000")
+	go s.server.Run(":9000")
 	awaitQuitKey()
 	err := s.store.db.Close()
 	log.Printf("%#v", err)

@@ -8,6 +8,7 @@ import (
 	"time"
 	"crypto/sha1"
 	"bytes"
+	// "encoding/hex"
 	"encoding/json"
 
 	"github.com/cznic/kv"
@@ -50,7 +51,7 @@ func newStore () *Store {
 		index: newIndex(),
 	}
 
-	s.reindex()
+	go s.reindex()
 
 	return s
 }
@@ -160,8 +161,7 @@ func (s *Store) addNote (title string) string {
 
 	s.db.Set(sha1sum, b_val)
 
-	s.index.Insert(title, n.Hex)
-	// go s.reindex()
+	go s.reindex()
 
 	return n.Hex
 }

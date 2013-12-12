@@ -13,32 +13,77 @@ var (
 )
 
 type Index struct {
-	TitleIS *ferret.InvertedSuffix
-	BodyIS *ferret.InvertedSuffix
+	titleIS *ferret.InvertedSuffix
+	bodyIS *ferret.InvertedSuffix
+
+	querychan chan Query
+	rebuildchan chan Bundle
+}
+
+type Query struct {
+	term string
+	returnchan chan []string
+}
+
+type Bundle struct {
+	titles, hexes, bodies []string
 }
 
 func newIndex () *Index {
-	return &Index{}
+	i := &Index{
+		querychan: make(chan Query),
+		rebuildchan: make(chan Bundle),
+	}
+
+	go i.run()
+
+	return i
 }
 
+func (i *Index) run() {
+	for {
+		select {
+		case q := <-i.querychan:
+			q.returnchan <- i.query(q.term)
+		case b := <-i.rebuildchan:
+			i.rebuildWith(b.titles, b.hexes, b.bodies)
+		}
+	}
+}
+
+
 func (i *Index) RebuildWith(titles, hexes, bodies []string) {
+	b := Bundle{
+		titles: titles,
+		hexes: hexes,
+		bodies: bodies,
+	}
+
+	i.rebuildchan <- b
+}
+
+func (i *Index) rebuildWith(titles, hexes, bodies []string) {
 	dummy := make([]interface{}, len(titles))
 	t := time.Now()
-        i.TitleIS = ferret.New(titles, hexes, dummy, IndexConverter)
-        i.BodyIS = ferret.New(bodies, hexes, dummy, IndexConverter)
+        i.titleIS = ferret.New(titles, hexes, dummy, IndexConverter)
+        i.bodyIS = ferret.New(bodies, hexes, dummy, IndexConverter)
 	log.Print("Created index in: ", time.Now().Sub(t))
 }
 
-func (i *Index) Insert(title, hex string) {
-	t := time.Now()
-        i.TitleIS.Insert(title, hex, nil)
-	log.Print("Insert into title index in: ", time.Now().Sub(t))
+func (i *Index) Query(term string) []string {
+	q := Query{
+		term: term,
+		returnchan: make(chan []string),
+	}
+
+	i.querychan <- q
+	return <-q.returnchan
 }
 
-func (i *Index) Query(term string) []string {
+func (i *Index) query(term string) []string {
 	t := time.Now()
-	title_results, _ := i.TitleIS.ErrorCorrectingQuery(term, 10, IndexCorrection)
-	body_results, _ := i.BodyIS.ErrorCorrectingQuery(term, 10, IndexCorrection)
+	title_results, _ := i.titleIS.ErrorCorrectingQuery(term, 10, IndexCorrection)
+	body_results, _ := i.bodyIS.ErrorCorrectingQuery(term, 10, IndexCorrection)
 
 	log.Print("Query completed in: ", time.Now().Sub(t))
 
