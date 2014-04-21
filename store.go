@@ -84,6 +84,7 @@ func (s *Store) dump () ([]string, []string, []string) {
 
 		var n Note
 		var loop_err error
+		var counter int
 
 		for ; loop_err == nil; key, value, loop_err = enum.Next() {
 			if bytes.HasPrefix(value, []byte(`{"hex":"`)) {
@@ -93,6 +94,7 @@ func (s *Store) dump () ([]string, []string, []string) {
 				hexes = append(hexes, hex.EncodeToString(key))
 
 				if len(n.RevisionRefs) > 0 {
+					counter++
 					sha1sum, _ = hex.DecodeString(n.RevisionRefs[len(n.RevisionRefs)-1])
 					latest_revision_bytes, _ = s.getBlob(sha1sum)
 					body = string(latest_revision_bytes)
@@ -103,6 +105,8 @@ func (s *Store) dump () ([]string, []string, []string) {
 				bodies = append(bodies, body)
 			}
 		}
+
+		log.Printf("Notes found: %v", counter)
 	}
 
 	log.Print("Dumped store values in: ", time.Now().Sub(t))
@@ -110,24 +114,36 @@ func (s *Store) dump () ([]string, []string, []string) {
 	return titles, hexes, bodies
 }
 
+func (s *Store) getList() []Note {
+	notes := make([]Note, 0)
+	_, hexes, _ := s.dump()
+
+	for _, hexstr := range hexes {
+		notes = append(notes, s.getNote(hexstr))
+	}
+
+	return notes
+}
+
 func (s *Store) query (term string) []Note {
 	hexes := s.index.Query(term)
 	notes := make([]Note, 0)
 
-	var sha1sum []byte
-	var notebytes []byte
-
 	for _, hexstr := range hexes {
-		sha1sum, _ = hex.DecodeString(hexstr)
-		notebytes, _ = s.getBlob(sha1sum)
-
-		var n Note
-		json.Unmarshal(notebytes, &n)
-
-		notes = append(notes, n)
+		notes = append(notes, s.getNote(hexstr))
 	}
 
 	return notes
+}
+
+func (s *Store) getNote(hexstr string) Note {
+	sha1sum, _ := hex.DecodeString(hexstr)
+	notebytes, _ := s.getBlob(sha1sum)
+
+	var n Note
+	json.Unmarshal(notebytes, &n)
+
+	return n
 }
 
 func (s *Store) getBlob (b []byte) ([]byte, error) {

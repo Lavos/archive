@@ -26,6 +26,7 @@ func NewServer() *Server {
 
 	w.Get("/api/([0-9a-f]{40})", s.getBlob)
 	w.Get("/api/search", s.search)
+	w.Get("/api/list", s.list)
 
 	w.Post("/api/new", s.postNote)
 	w.Post("/api/([0-9a-f]{40})", s.postRevision)
@@ -55,6 +56,13 @@ func (s *Server) getBlob (ctx *web.Context, hexstr string) string {
 
 func (s *Server) search (ctx *web.Context) []byte {
 	notes := s.store.query(ctx.Params["q"])
+	b, _ := json.Marshal(notes)
+
+	return b
+}
+
+func (s *Server) list (ctx *web.Context) []byte {
+	notes := s.store.getList()
 	b, _ := json.Marshal(notes)
 
 	return b
